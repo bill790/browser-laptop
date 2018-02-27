@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this file,
+ * You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 const ipc = chrome.ipcRenderer
 
 ipc.send('got-background-page-webcontents')
@@ -180,8 +184,8 @@ const getUrl = (baseUrl, relativePath = '') => {
 }
 
 const REGEX_STRICT = /^\S+\s+\S+/
-const strict = rule => $ => {
-  const value = rule($)
+const strict = rule => html => {
+  const value = rule(html)
   return REGEX_STRICT.test(value) && value
 }
 
@@ -203,15 +207,32 @@ const getValue = (html, collection, fn = defaultFn) => {
 }
 
 const getThumbnailUrl = id => {
+  if (id == null) {
+    return null
+  }
+
   return `https://img.youtube.com/vi/${id}/sddefault.jpg`
 }
 
 const getVideoId = (str) => {
   let metadata = {}
 
+  if (typeof str !== 'string') {
+		return metadata
+	}
+
+	// remove surrounding whitespaces or linefeeds
+	str = str.trim()
+
+	// remove the '-nocookie' flag from youtube urls
+	str = str.replace('-nocookie', '')
+
+	// remove any leading `www.`
+	str = str.replace('/www.', '/')
+
   if (/youtube|youtu\.be|i.ytimg\./.test(str)) {
     metadata = {
-      id: getYoutubeId(str),
+      id: getYouTubeId(str),
       service: 'youtube'
     }
   }
@@ -220,7 +241,11 @@ const getVideoId = (str) => {
 }
 
 // https://github.com/radiovisual/get-video-id
-const getYoutubeId = (str) => {
+const getYouTubeId = (str) => {
+  if (str == null) {
+    return ''
+  }
+
   // short code
   const shortCode = /youtube:\/\/|https?:\/\/youtu\.be\//g
   if (shortCode.test(str)) {
@@ -245,7 +270,7 @@ const getYoutubeId = (str) => {
   // v= or vi=
   const parameterWebP = /\/an_webp\//g
   if (parameterWebP.test(str)) {
-    const webP = str.split(parameterP)[1]
+    const webP = str.split(parameterWebP)[1]
     return stripParameters(webP)
   }
 
@@ -271,10 +296,17 @@ const getYoutubeId = (str) => {
 }
 
 const stripParameters = (str) => {
-  // Split parameters or split folder separator
-  if (str.indexOf('?') > -1) {
+  if (str == null) {
+    return ''
+  }
+
+  // Split parameters
+  if (str.includes('?')) {
     return str.split('?')[0]
-  } else if (str.indexOf('/') > -1) {
+  }
+
+  // Split folder separator
+  if (str.includes('/')) {
     return str.split('/')[0]
   }
 
@@ -307,9 +339,13 @@ const replacements = [
   [/"/g, '\u2033'],
   // prime
   [/'/g, '\u2032']
-];
+]
 
 const smartQuotes = (str) => {
+  if (!replacements || !str) {
+    return ''
+  }
+
   replacements.forEach(replace => {
     const replacement = typeof replace[1] === 'function' ? replace[1]({}) : replace[1]
     str = str.replace(replace[0], replacement)
@@ -319,10 +355,18 @@ const smartQuotes = (str) => {
 
 const REGEX_BY = /^[\s\n]*by|@[\s\n]*/i
 const removeByPrefix = (str = '') => {
+  if (str == null) {
+    return ''
+  }
+
   return str.replace(REGEX_BY, '').trim()
 }
 
 const createTitle = (str = '') => {
+  if (str == null) {
+    return ''
+  }
+
   str = str.trim().replace(/\s{2,}/g, ' ')
   return smartQuotes(str)
 }
@@ -330,7 +374,7 @@ const createTitle = (str = '') => {
 // https://github.com/sindresorhus/is-absolute-url
 const isAbsoluteUrl = (url) => {
   if (!isString(url)) {
-    return url
+    return false
   }
 
   return /^[a-z][a-z0-9+.-]*:/.test(url)
@@ -338,6 +382,11 @@ const isAbsoluteUrl = (url) => {
 
 const resolveUrl = (baseUrl, relativePath) => {
   let url = baseUrl
+
+  if (!relativePath) {
+    return url
+  }
+
   try {
     url = new URL(relativePath, [baseUrl])
   } catch (e) {}
@@ -346,3 +395,34 @@ const resolveUrl = (baseUrl, relativePath) => {
 }
 
 const isString = (str) => typeof str === 'string'
+
+module.exports = {
+  getMetaData,
+  getData,
+  getImageRules,
+  getTitleRules,
+  getAuthorRules,
+  getText,
+  urlCheck,
+  getContent,
+  getSrc,
+  urlTest,
+  isEmpty,
+  isUrl,
+  getUrl,
+  strict,
+  titleize,
+  defaultFn,
+  getValue,
+  getThumbnailUrl,
+  getVideoId,
+  getYouTubeId,
+  stripParameters,
+  smartQuotes,
+  REGEX_BY,
+  removeByPrefix,
+  createTitle,
+  isAbsoluteUrl,
+  resolveUrl,
+  isString
+}
