@@ -39,6 +39,8 @@ const syncPhoneTabletImage = require('../../../extensions/brave/img/sync/device_
 const syncComputerImage = require('../../../extensions/brave/img/sync/device_type_computer.svg')
 const syncPlusImage = require('../../../extensions/brave/img/sync/add_device_titleicon.svg')
 const syncCodeImage = require('../../../extensions/brave/img/sync/synccode_titleicon.svg')
+const syncRemoveImage = require('../../../extensions/brave/img/sync/remove_device_titleicon.svg')
+const removeIcon = require('../../../extensions/brave/img/ledger/icon_remove.svg')
 const syncPassphraseInputSize = 16
 
 class SyncTab extends ImmutableComponent {
@@ -50,7 +52,13 @@ class SyncTab extends ImmutableComponent {
     this.onRestore = this.restoreSyncProfile.bind(this)
     this.enableRestore = this.enableRestore.bind(this)
     this.onCopy = this.copyPassphraseToClipboard.bind(this)
-    this.state = {wordCount: 0}
+    this.state = {
+      wordCount: 0,
+      deviceIdToRemove: '',
+      deviceNameToRemove: '',
+      isRemovingMainDevice: ''
+    }
+    this.onRemove = this.removeSyncDevice.bind(this)
   }
 
   get setupError () {
@@ -206,6 +214,15 @@ class SyncTab extends ImmutableComponent {
     )
   }
 
+  onClickSyncRemoveButton (e) {
+    // create a temporary state to host the device to be removed
+    this.setState({deviceIdToRemove: e.target.id})
+    this.setState({deviceNameToRemove: e.target.dataset.deviceName})
+    this.setState({isRemovingMainDevice: e.target.dataset.mainDevice})
+    // hide the current modal
+    this.props.showOverlay('syncRemove')
+  }
+
   get devicesTableRows () {
     const devices = this.props.syncData.get('devices')
     if (!devices) { return [] }
@@ -221,6 +238,17 @@ class SyncTab extends ImmutableComponent {
       {
         html: new Date(device.get('lastRecordTimestamp')).toLocaleString(),
         value: device.get('lastRecordTimestamp')
+      },
+      {
+        html: <span
+          id={id}
+          data-main-device={device.get('mainDevice')}
+          data-device-name={device.get('name')}
+          data-l10n-id='syncRemoveDevice'
+          className={css(styles.actionIcons__icon, styles.actionIcons__icon_remove)}
+          onClick={this.onClickSyncRemoveButton.bind(this)}
+        />,
+        value: ''
       }
     ])
   }
@@ -229,7 +257,7 @@ class SyncTab extends ImmutableComponent {
     return <section className={css(styles.settingsListContainerMargin__top)}>
       <DefaultSectionTitle data-l10n-id='syncDevices' data-test-id='syncDevices' />
       <SortableTable
-        headings={['id', 'syncDeviceName', 'syncDeviceLastActive']}
+        headings={['id', 'syncDeviceName', 'syncDeviceLastActive', 'remove']}
         defaultHeading='syncDeviceLastActive'
         defaultHeadingSortOrder='desc'
         rows={this.devicesTableRows}
@@ -686,7 +714,43 @@ class SyncTab extends ImmutableComponent {
       <BrowserButton groupedItem primaryColor
         l10nId='syncReset'
         testId='syncResetButton'
-        onClick={this.onReset}
+        onClick={this.onRemove}
+      />
+    </section>
+  }
+
+  get removeOverlayContent () {
+    return (
+      <Grid gap={0} columns={1} padding='0 77px'>
+        <Column>
+          {
+          this.state.isRemovingMainDevice
+            ? (
+              <div>
+                <p
+                  className={css(styles.settingsListContainerMargin__bottom)} data-l10n-id='syncRemoveActiveDeviceWarning1'
+                />
+                <p data-l10n-id='syncRemoveActiveDeviceWarning2' />
+              </div>
+            )
+            : <p data-l10n-id='syncRemoveOtherDeviceWarning' />
+          }
+        </Column>
+      </Grid>
+    )
+  }
+
+  get removeOverlayFooter () {
+    return <section>
+      <BrowserButton groupedItem secondaryColor
+        l10nId='cancel'
+        testId='cancelButton'
+        onClick={this.props.hideOverlay.bind(this, 'syncRemove')}
+      />
+      <BrowserButton groupedItem primaryColor
+        l10nId='syncRemove'
+        testId='syncRemoveButton'
+        onClick={this.onRemove}
       />
     </section>
   }
@@ -737,6 +801,21 @@ class SyncTab extends ImmutableComponent {
     }
   }
 
+  removeSyncDevice (e) {
+    const targetDeviceId = this.state.deviceIdToRemove
+    const isMainDevice = this.state.isRemovingMainDevice
+
+    // if it's the main device, reset sync completely
+    if (isMainDevice) {
+      aboutActions.resetSync()
+      appActions.syncSetupCompleted(false)
+    } else {
+      appActions.removeSyncDevice(targetDeviceId)
+    }
+    // hide the current overlay
+    this.props.hideOverlay('syncRemove')
+  }
+
   restoreSyncProfile () {
     if (this.passphraseInput.value) {
       let text = this.passphraseInput.value.toLowerCase().replace(/,/g, ' ').replace(/\s+/g, ' ').trim()
@@ -758,7 +837,6 @@ class SyncTab extends ImmutableComponent {
   }
 
   render () {
-    console.log(JSON.stringify(this.props.syncData.get('devices')))
     return <section data-test-id='syncContainer'>
       {
       this.props.syncStartOverlayVisible
@@ -827,6 +905,18 @@ class SyncTab extends ImmutableComponent {
           content={this.resetOverlayContent}
           footer={this.resetOverlayFooter}
           onHide={this.props.hideOverlay.bind(this, 'syncReset')} />
+        : null
+      }
+      {
+        this.props.syncRemoveOverlayVisible
+        ? <ModalOverlay
+          grayOverlay
+          title={'syncRemoveDeviceModal'}
+          titleImage={syncRemoveImage}
+          titleArgs={{device: this.state.deviceNameToRemove}}
+          content={this.removeOverlayContent}
+          footer={this.removeOverlayFooter}
+          onHide={this.props.hideOverlay.bind(this, 'syncRemove')} />
         : null
       }
       <section className={css(styles.settingsListContainerMargin__bottom)}>
@@ -1085,6 +1175,21 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'space-between',
     alignItems: 'center'
+  },
+
+  actionIcons__icon: {
+    backgroundColor: '#c4c5c5',
+    width: '1rem',
+    height: '1rem',
+    display: 'inline-block',
+
+    ':hover': {
+      backgroundColor: globalStyles.color.buttonColor
+    }
+  },
+
+  actionIcons__icon_remove: {
+    '-webkit-mask-image': `url(${removeIcon})`
   }
 })
 
